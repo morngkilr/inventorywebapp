@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garage Tool Inventory</title>
+<style>
+:root{--b:#1f6feb;--bg:#f4f5f7;--c:#fff;--t:#1b1f24;--m:#667}
+*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif;background:var(--bg);color:var(--t)}
+header{background:#14213d;color:#fff;padding:12px 14px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:18px}
+nav{display:flex;gap:6px;margin-top:8px}nav button{flex:1;padding:9px;border:0;border-radius:8px;background:#2b3a67;color:#fff;font-size:15px}
+nav button.on{background:var(--b)}
+main{padding:12px;max-width:900px;margin:auto}
+.card{background:var(--c);border-radius:10px;padding:12px;margin-bottom:10px;box-shadow:0 1px 3px #0002}
+label{display:block;font-size:12px;color:var(--m);margin:8px 0 2px}
+input,select,textarea{width:100%;padding:9px;font-size:16px;border:1px solid #ccd;border-radius:7px;background:#fff}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button.p{background:var(--b);color:#fff;border:0;border-radius:8px;padding:11px 14px;font-size:16px}
+button.s{background:#e6e8ee;border:0;border-radius:8px;padding:9px 12px;font-size:15px}
+button.d{background:#c62828;color:#fff;border:0;border-radius:8px;padding:9px 12px}
+img.th{max-width:100%;max-height:220px;border-radius:8px;display:block;margin-bottom:6px}
+img.sm{width:64px;height:64px;object-fit:cover;border-radius:8px}
+.item{display:flex;gap:10px;align-items:center}.item .i{flex:1;min-width:0}
+.m{color:var(--m);font-size:13px}.hide{display:none}
+#msg{position:fixed;bottom:10px;left:10px;right:10px;background:#222;color:#fff;padding:10px;border-radius:8px;display:none;z-index:9}
+</style></head><body>
+<header><h1>🧰 Garage Tool Inventory</h1>
+<nav><button data-t="scan" class="on">Photo</button><button data-t="inv">Inventory</button><button data-t="set">Settings</button></nav></header>
+<main>
+<section id="scan">
+ <div class="card"><label>Photograph tool(s) (camera or gallery)</label>
+ <input type="file" id="file" accept="image/*" capture="environment">
+ <label>Default storage location for this photo</label><input id="defLoc" placeholder="e.g. Workbench drawer 2">
+ <button class="p" id="analyze" style="margin-top:10px;width:100%">Identify with AI</button>
+ <button class="s" id="manual" style="margin-top:8px;width:100%">Add without AI</button>
+ <div class="m" id="status"></div></div>
+ <div id="review"></div>
+</section>
+<section id="inv" class="hide">
+ <div class="card"><input id="q" placeholder="Search name, brand, model, serial, location…">
+ <div class="row" style="margin-top:8px"><button class="p" id="xlsx">Export Excel</button><button class="s" id="addm">+ Add item</button></div>
+ <div class="m" id="count"></div></div>
+ <div id="list"></div>
+</section>
+<section id="set" class="hide">
+ <div class="card"><label>AI provider</label>
+ <select id="prov"><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select>
+ <label>API key (stored only in this browser)</label><input id="key" type="password" autocomplete="off">
+ <label>Model name</label><input id="model">
+ <button class="p" id="saveSet" style="margin-top:10px">Save settings</button></div>
+ <div class="card"><b>Backup</b><div class="m">Data lives in this browser only. Back up regularly.</div>
+ <div class="row" style="margin-top:8px"><button class="s" id="bk">Download backup (.json)</button><button class="s" id="rs">Restore backup</button></div>
+ <input type="file" id="rsf" accept=".json" class="hide"></div>
+ <div class="card"><label>Storage locations (one per line, used as suggestions)</label><textarea id="locs" rows="4"></textarea>
+ <button class="s" id="saveLocs" style="margin-top:6px">Save locations</button></div>
+</section>
+</main><div id="msg"></div><datalist id="locdl"></datalist>
+<script>
+//XLSX_START
+function crcTable(){const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t}
+const CRCT=crcTable();
+function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRCT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function zipStore(files){
+ const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+ for(const f of files){
+  const nm=enc.encode(f.name),d=typeof f.data==='string'?enc.encode(f.data):f.data,crc=crc32(d);
+  const h=new DataView(new ArrayBuffer(30));
+  h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);
+  h.setUint16(10,0,true);h.setUint16(12,0x21,true);h.setUint32(14,crc,true);h.setUint32(18,d.length,true);h.setUint32(22,d.length,true);
+  h.setUint16(26,nm.length,true);h.setUint16(28,0,true);
+  parts.push(new Uint8Array(h.buffer),nm,d);
+  const c=new DataView(new ArrayBuffer(46));
+  c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,0,true);
+  c.setUint16(12,0,true);c.setUint16(14,0x21,true);c.setUint32(16,crc,true);c.setUint32(20,d.length,true);c.setUint32(24,d.length,true);
+  c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+  cen.push(new Uint8Array(c.buffer),nm);
+  off+=30+nm.length+d.length;
+ }
+ let cs=0;for(const p of cen)cs+=p.length;
+ const e=new DataView(new ArrayBuffer(22));
+ e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+ const all=[...parts,...cen,new Uint8Array(e.buffer)];let n=0;for(const p of all)n+=p.length;
+ const out=new Uint8Array(n);let o=0;for(const p of all){out.set(p,o);o+=p.length}return out;
+}
+function xmlEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'')}
+function colL(i){let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s}
+function buildXlsx(headers,rows,sheet){
+ const cell=(v,r,c)=>{const ref=colL(c)+r;
+  if(typeof v==='number'&&isFinite(v))return `<c r="${ref}"><v>${v}</v></c>`;
+  return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`};
+ let sd=`<row r="1">${headers.map((h,i)=>cell(h,1,i)).join('')}</row>`;
+ rows.forEach((row,ri)=>{sd+=`<row r="${ri+2}">${row.map((v,i)=>cell(v,ri+2,i)).join('')}</row>`});
+ const cols=headers.map((h,i)=>`<col min="${i+1}" max="${i+1}" width="${Math.max(12,Math.min(40,String(h).length+8))}" customWidth="1"/>`).join('');
+ const X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+ return zipStore([
+ {name:'[Content_Types].xml',data:X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'},
+ {name:'_rels/.rels',data:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+ {name:'xl/workbook.xml',data:X+`<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEsc(sheet)}" sheetId="1" r:id="rId1"/></sheets></workbook>`},
+ {name:'xl/_rels/workbook.xml.rels',data:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'},
+ {name:'xl/worksheets/sheet1.xml',data:X+`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${cols}</cols><sheetData>${sd}</sheetData></worksheet>`}
+ ]);
+}
+function parseItems(text){
+ let t=String(text).trim().replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
+ let j;try{j=JSON.parse(t)}catch(e){const m=t.match(/[\[{][\s\S]*[\]}]/);if(!m)throw new Error('AI returned no JSON');j=JSON.parse(m[0])}
+ if(!Array.isArray(j))j=j.items||j.tools||[j];
+ return j.filter(x=>x&&typeof x==='object').map(x=>({name:String(x.name||'').trim(),category:String(x.category||'Other').trim(),brand:String(x.brand||'').trim(),model:String(x.model||'').trim(),serial:String(x.serial||'').trim(),quantity:Math.max(1,parseInt(x.quantity)||1),notes:String(x.notes||'').trim()}));
+}
+//XLSX_END
+const CATS=['Hand tools','Power tools','Measuring','Fasteners & hardware','Automotive','Garden & outdoor','Electrical','Plumbing','Painting','Safety gear','Storage','Cleaning','Other'];
+const $=s=>document.querySelector(s);
+const toast=(m)=>{const e=$('#msg');e.textContent=m;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',3500)};
+let db;
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open('garage-inv',1);
+ r.onupgradeneeded=()=>{r.result.createObjectStore('items',{keyPath:'id',autoIncrement:true})};
+ r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+const tx=(m)=>db.transaction('items',m).objectStore('items');
+const pr=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const allItems=()=>pr(tx('readonly').getAll());
+const putItem=i=>pr(tx('readwrite').put(i));
+const delItem=id=>pr(tx('readwrite').delete(id));
+const S={get:(k,d)=>localStorage.getItem('gi_'+k)??d,set:(k,v)=>localStorage.setItem('gi_'+k,v)};
+const DEF={gemini:'gemini-2.5-flash-lite',openai:'gpt-4o-mini'};
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+ ['scan','inv','set'].forEach(t=>$('#'+t).classList.toggle('hide',t!==b.dataset.t));
+ if(b.dataset.t==='inv')renderList()});
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function resize(file,max=1024,q=.8){return new Promise((res,rej)=>{const im=new Image(),u=URL.createObjectURL(file);
+ im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');
+  c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+  URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',q))};im.onerror=()=>rej(new Error('Cannot read image'));im.src=u})}
+let photo=null,drafts=[];
+$('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{photo=await resize(f);$('#status').textContent='Photo ready.'}catch(x){toast(x.message)}};
+const PROMPT='You are cataloguing a home garage. Identify every distinct tool or item clearly visible in the photo. Return ONLY a JSON array. Each element: {"name":string,"category":one of '+JSON.stringify(CATS)+',"brand":string or "" if not visible,"model":string or "" if not visible,"serial":"" unless a serial number is legible,"quantity":integer count of identical items,"notes":short}. Do not guess brands, models or serials that are not legible; use "".';
+async function callAI(dataUrl){
+ const prov=S.get('prov','gemini'),key=S.get('key',''),model=S.get('model','')||DEF[prov];
+ if(!key)throw new Error('Add your API key in Settings first.');
+ const b64=dataUrl.split(',')[1];let r,j;
+ if(prov==='gemini'){
+  r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
+   body:JSON.stringify({contents:[{parts:[{text:PROMPT},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],generationConfig:{responseMimeType:'application/json',temperature:.2}})});
+  j=await r.json();if(!r.ok)throw new Error(j.error?.message||('HTTP '+r.status));
+  return j.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
+ }
+ r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},
+  body:JSON.stringify({model,messages:[{role:'user',content:[{type:'text',text:PROMPT+' Wrap the array as {"items":[...]}.'},{type:'image_url',image_url:{url:dataUrl,detail:'low'}}]}],response_format:{type:'json_object'}})});
+ j=await r.json();if(!r.ok)throw new Error(j.error?.message||('HTTP '+r.status));
+ return j.choices?.[0]?.message?.content||'';
+}
+$('#analyze').onclick=async()=>{
+ if(!photo)return toast('Take or choose a photo first.');
+ const b=$('#analyze');b.disabled=true;$('#status').textContent='Analyzing…';
+ try{const t=await callAI(photo);drafts=parseItems(t).map(d=>({...d,location:$('#defLoc').value,keep:true}));
+  if(!drafts.length)toast('No items found. Add manually.');$('#status').textContent=drafts.length+' suggestion(s). Review and edit below.';renderReview()}
+ catch(e){$('#status').textContent='';toast('AI error: '+e.message)}finally{b.disabled=false}};
+$('#manual').onclick=()=>{drafts=[{name:'',category:'Other',brand:'',model:'',serial:'',quantity:1,notes:'',location:$('#defLoc').value,keep:true}];renderReview()};
+function fields(d,p){const o=CATS.includes(d.category)?CATS:[...CATS,d.category];
+ return `<label>Name</label><input data-f="name" data-p="${p}" value="${esc(d.name)}">
+ <div class="row"><div><label>Category</label><select data-f="category" data-p="${p}">${o.map(c=>`<option ${c===d.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+ <div><label>Quantity</label><input type="number" min="0" inputmode="numeric" data-f="quantity" data-p="${p}" value="${d.quantity}"></div></div>
+ <div class="row"><div><label>Brand</label><input data-f="brand" data-p="${p}" value="${esc(d.brand)}"></div><div><label>Model</label><input data-f="model" data-p="${p}" value="${esc(d.model)}"></div></div>
+ <label>Serial number</label><input data-f="serial" data-p="${p}" value="${esc(d.serial)}">
+ <label>Storage location</label><input list="locdl" data-f="location" data-p="${p}" value="${esc(d.location)}">
+ <label>Notes</label><input data-f="notes" data-p="${p}" value="${esc(d.notes)}">`}
+function renderReview(){const el=$('#review');
+ el.innerHTML=drafts.map((d,i)=>`<div class="card">${photo?`<img class="th" src="${photo}">`:''}
+ <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" style="width:auto" data-k="${i}" ${d.keep?'checked':''}> Save this item</label>${fields(d,'d'+i)}</div>`).join('')+
+ (drafts.length?'<button class="p" id="saveAll" style="width:100%">Save selected to inventory</button>':'');
+ el.querySelectorAll('[data-f]').forEach(x=>x.oninput=()=>{const i=+x.dataset.p.slice(1);drafts[i][x.dataset.f]=x.dataset.f==='quantity'?(parseInt(x.value)||0):x.value});
+ el.querySelectorAll('[data-k]').forEach(x=>x.onchange=()=>drafts[+x.dataset.k].keep=x.checked);
+ const s=$('#saveAll');if(s)s.onclick=async()=>{let n=0;for(const d of drafts){if(!d.keep)continue;if(!d.name.trim()){toast('Every saved item needs a name.');return}
+  await putItem({name:d.name.trim(),category:d.category,brand:d.brand,model:d.model,serial:d.serial,quantity:d.quantity,location:d.location,notes:d.notes,photo,added:new Date().toISOString()});n++}
+  drafts=[];photo=null;$('#file').value='';$('#review').innerHTML='';$('#status').textContent='';toast(n+' item(s) saved.');refreshLocs()}}
+async function renderList(){const q=$('#q').value.toLowerCase();let items=await allItems();
+ items=items.filter(i=>!q||[i.name,i.brand,i.model,i.serial,i.location,i.category,i.notes].join(' ').toLowerCase().includes(q)).sort((a,b)=>(a.location||'').localeCompare(b.location||'')||a.name.localeCompare(b.name));
+ $('#count').textContent=items.length+' item(s), '+items.reduce((s,i)=>s+(+i.quantity||0),0)+' total units';
+ $('#list').innerHTML=items.map(i=>`<div class="card"><div class="item" data-o="${i.id}">${i.photo?`<img class="sm" src="${i.photo}">`:''}<div class="i"><b>${esc(i.name)}</b> ×${i.quantity}<div class="m">${esc([i.category,i.brand,i.model].filter(Boolean).join(' · '))}</div><div class="m">📍 ${esc(i.location||'no location')}${i.serial?' · S/N '+esc(i.serial):''}</div></div></div><div class="hide" id="e${i.id}"></div></div>`).join('');
+ document.querySelectorAll('[data-o]').forEach(x=>x.onclick=()=>openEdit(+x.dataset.o,items))}
+function openEdit(id,items){const it=items.find(i=>i.id===id),box=$('#e'+id);
+ if(!box.classList.contains('hide')){box.classList.add('hide');return}
+ box.classList.remove('hide');const cp={...it};
+ box.innerHTML=(it.photo?`<img class="th" src="${it.photo}" style="margin-top:8px">`:'')+fields(cp,'x')+`<div class="row" style="margin-top:10px"><button class="p" data-s>Save</button><button class="d" data-x>Delete</button></div>`;
+ box.querySelectorAll('[data-f]').forEach(x=>x.oninput=()=>{cp[x.dataset.f]=x.dataset.f==='quantity'?(parseInt(x.value)||0):x.value});
+ box.querySelector('[data-s]').onclick=async()=>{if(!cp.name.trim())return toast('Name required');await putItem(cp);toast('Saved');refreshLocs();renderList()};
+ box.querySelector('[data-x]').onclick=async()=>{if(confirm('Delete "'+it.name+'"?')){await delItem(id);renderList()}}}
+$('#q').oninput=renderList;
+$('#addm').onclick=()=>{document.querySelector('[data-t=scan]').click();$('#manual').click()};
+$('#xlsx').onclick=async()=>{const items=await allItems();if(!items.length)return toast('Inventory is empty.');
+ const H=['Name','Category','Quantity','Brand','Model','Serial number','Storage location','Notes','Added'];
+ const rows=items.map(i=>[i.name,i.category,+i.quantity||0,i.brand,i.model,i.serial,i.location,i.notes,(i.added||'').slice(0,10)]);
+ const blob=new Blob([buildXlsx(H,rows,'Inventory')],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='garage-inventory-'+new Date().toISOString().slice(0,10)+'.xlsx';document.body.appendChild(a);a.click();a.remove();toast('Excel file exported.')};
+$('#bk').onclick=async()=>{const b=new Blob([JSON.stringify(await allItems())],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='garage-backup.json';a.click()};
+$('#rs').onclick=()=>$('#rsf').click();
+$('#rsf').onchange=async e=>{try{const arr=JSON.parse(await e.target.files[0].text());for(const i of arr){delete i.id;await putItem(i)}toast(arr.length+' items restored.')}catch(x){toast('Bad backup file')}};
+function loadSet(){$('#prov').value=S.get('prov','gemini');$('#key').value=S.get('key','');$('#model').value=S.get('model','')||DEF[$('#prov').value];$('#locs').value=S.get('locs','Workbench\nWall pegboard\nToolbox\nShelf A\nShelf B')}
+$('#prov').onchange=()=>$('#model').value=DEF[$('#prov').value];
+$('#saveSet').onclick=()=>{S.set('prov',$('#prov').value);S.set('key',$('#key').value.trim());S.set('model',$('#model').value.trim());toast('Settings saved.')};
+$('#saveLocs').onclick=()=>{S.set('locs',$('#locs').value);refreshLocs();toast('Locations saved.')};
+async function refreshLocs(){const set=new Set(S.get('locs','').split('\n').map(s=>s.trim()).filter(Boolean));(await allItems()).forEach(i=>i.location&&set.add(i.location));
+ $('#locdl').innerHTML=[...set].map(l=>`<option value="${esc(l)}">`).join('')}
+(async()=>{try{db=await openDB();if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();loadSet();refreshLocs()}catch(e){toast('Storage unavailable: '+e.message)}})();
+</script></body></html>
