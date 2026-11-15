@@ -119,7 +119,9 @@ const allItems=()=>pr(tx('readonly').getAll());
 const putItem=i=>pr(tx('readwrite').put(i));
 const delItem=id=>pr(tx('readwrite').delete(id));
 const S={get:(k,d)=>localStorage.getItem('gi_'+k)??d,set:(k,v)=>localStorage.setItem('gi_'+k,v)};
-const DEF={gemini:'gemini-2.5-flash-lite',openai:'gpt-4o-mini'};
+const DEF={gemini:'gemini-3.5-flash-lite',openai:'gpt-4o-mini'};
+const OLD_DEFAULTS=['gemini-2.5-flash-lite'];
+function curModel(prov){const m=S.get('model','');return(!m||OLD_DEFAULTS.includes(m))?DEF[prov]:m}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
  ['scan','inv','set'].forEach(t=>$('#'+t).classList.toggle('hide',t!==b.dataset.t));
@@ -133,7 +135,7 @@ let photo=null,drafts=[];
 $('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{photo=await resize(f);$('#status').textContent='Photo ready.'}catch(x){toast(x.message)}};
 const PROMPT='You are cataloguing a home garage. Identify every distinct tool or item clearly visible in the photo. Return ONLY a JSON array. Each element: {"name":string,"category":one of '+JSON.stringify(CATS)+',"brand":string or "" if not visible,"model":string or "" if not visible,"serial":"" unless a serial number is legible,"quantity":integer count of identical items,"notes":short}. Do not guess brands, models or serials that are not legible; use "".';
 async function callAI(dataUrl){
- const prov=S.get('prov','gemini'),key=S.get('key',''),model=S.get('model','')||DEF[prov];
+ const prov=S.get('prov','gemini'),key=S.get('key',''),model=curModel(prov);
  if(!key)throw new Error('Add your API key in Settings first.');
  const b64=dataUrl.split(',')[1];let r,j;
  if(prov==='gemini'){
@@ -193,7 +195,7 @@ $('#xlsx').onclick=async()=>{const items=await allItems();if(!items.length)retur
 $('#bk').onclick=async()=>{const b=new Blob([JSON.stringify(await allItems())],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='garage-backup.json';a.click()};
 $('#rs').onclick=()=>$('#rsf').click();
 $('#rsf').onchange=async e=>{try{const arr=JSON.parse(await e.target.files[0].text());for(const i of arr){delete i.id;await putItem(i)}toast(arr.length+' items restored.')}catch(x){toast('Bad backup file')}};
-function loadSet(){$('#prov').value=S.get('prov','gemini');$('#key').value=S.get('key','');$('#model').value=S.get('model','')||DEF[$('#prov').value];$('#locs').value=S.get('locs','Workbench\nWall pegboard\nToolbox\nShelf A\nShelf B')}
+function loadSet(){const p=S.get('prov','gemini');$('#prov').value=p;$('#key').value=S.get('key','');$('#model').value=curModel(p);$('#locs').value=S.get('locs','Workbench\nWall pegboard\nToolbox\nShelf A\nShelf B')}
 $('#prov').onchange=()=>$('#model').value=DEF[$('#prov').value];
 $('#saveSet').onclick=()=>{S.set('prov',$('#prov').value);S.set('key',$('#key').value.trim());S.set('model',$('#model').value.trim());toast('Settings saved.')};
 $('#saveLocs').onclick=()=>{S.set('locs',$('#locs').value);refreshLocs();toast('Locations saved.')};
